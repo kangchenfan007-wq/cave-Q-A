@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>溶洞探秘互动游戏</title>
+    <style>
+        :root {
+            --bg-color: #0a0b14;
+            --glass: rgba(255, 255, 255, 0.1);
+            --accent: #4ae2d0;
+        }
+
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg-color); font-family: "PingFang SC", "Microsoft YaHei", sans-serif; color: white; }
+
+        /* 主背景图 */
+        #game-container {
+            position: relative; width: 100%; height: 100%;
+            background: linear-gradient(rgba(0,0,0,0.4), rgba(0,0,0,0.4)), url('https://images.unsplash.com/photo-1509023464722-18d996393ca8?q=80&w=2070') no-repeat center;
+            background-size: cover;
+            display: none; /* 初始隐藏，登录后显示 */
+        }
+
+        /* 登录及结果弹窗通用样式 */
+        .overlay {
+            position: fixed; inset: 0; background: var(--bg-color); 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000;
+        }
+
+        .card {
+            background: var(--glass); backdrop-filter: blur(20px);
+            padding: 30px; border-radius: 25px; border: 1px solid rgba(255,255,255,0.2);
+            text-align: center; width: 80%; max-width: 320px;
+        }
+
+        /* 交互光斑 */
+        .hotspot {
+            position: absolute; width: 30px; height: 30px; background: rgba(255,255,255,0.6);
+            border-radius: 50%; box-shadow: 0 0 20px #fff; animation: pulse 2s infinite; cursor: pointer;
+        }
+        @keyframes pulse { 0%, 100% {transform: scale(1); opacity: 0.5;} 50% {transform: scale(1.3); opacity: 0.9;} }
+
+        /* 答题弹窗 */
+        #quiz-box {
+            display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 85%; max-width: 350px; background: rgba(0,0,0,0.85); backdrop-filter: blur(10px);
+            padding: 20px; border-radius: 20px; border: 1px solid var(--accent); z-index: 500;
+        }
+
+        .opt-btn {
+            display: block; width: 100%; padding: 12px; margin: 10px 0;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+            color: white; border-radius: 10px; cursor: pointer; transition: 0.2s;
+        }
+        .opt-btn:active { background: var(--accent); color: #000; }
+
+        /* 结果页图标 */
+        .result-icon { font-size: 60px; margin-bottom: 10px; display: block; }
+        .title-name { font-size: 24px; font-weight: bold; color: var(--accent); margin: 10px 0; }
+        
+        button.primary {
+            background: var(--accent); color: #000; border: none; padding: 12px 30px;
+            border-radius: 25px; font-weight: bold; margin-top: 20px; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen" class="overlay">
+        <div class="card">
+            <h1 style="color:var(--accent)">溶洞探秘</h1>
+            <p>寻找洞穴中的 10 处微光<br>开启你的地心科普之旅</p>
+            <input type="text" id="nickname" placeholder="输入你的探险家代号" style="padding:10px; border-radius:8px; width:80%; border:none; margin:15px 0;">
+            <button class="primary" onclick="initGame()">开始探秘</button>
+        </div>
+    </div>
+
+    <div id="game-container">
+        <div id="spots-group">
+            <div class="hotspot" style="top:20%; left:25%" onclick="openQuiz(0, this)"></div>
+            <div class="hotspot" style="top:15%; left:60%" onclick="openQuiz(1, this)"></div>
+            <div class="hotspot" style="top:40%; left:45%" onclick="openQuiz(2, this)"></div>
+            <div class="hotspot" style="top:70%; left:20%" onclick="openQuiz(3, this)"></div>
+            <div class="hotspot" style="top:80%; left:55%" onclick="openQuiz(4, this)"></div>
+            <div class="hotspot" style="top:30%; left:80%" onclick="openQuiz(5, this)"></div>
+            <div class="hotspot" style="top:60%; left:75%" onclick="openQuiz(6, this)"></div>
+            <div class="hotspot" style="top:50%; left:15%" onclick="openQuiz(7, this)"></div>
+            <div class="hotspot" style="top:85%; left:35%" onclick="openQuiz(8, this)"></div>
+            <div class="hotspot" style="top:45%; left:85%" onclick="openQuiz(9, this)"></div>
+        </div>
+    </div>
+
+    <div id="quiz-box">
+        <p id="q-text" style="font-size:18px; line-height:1.4"></p>
+        <div id="options"></div>
+    </div>
+
+    <div id="result-screen" class="overlay" style="display:none">
+        <div class="card">
+            <span id="res-icon" class="result-icon"></span>
+            <div id="res-title" class="title-name"></div>
+            <p id="res-score" style="font-size:16px;"></p>
+            <p id="res-desc" style="color:#aaa; font-size:14px;"></p>
+            <button class="primary" onclick="resetGame()">重新开始</button>
+        </div>
+    </div>
+
+<script>
+    const questions = [
+        { q: "溶洞属于哪种地貌类型？", a: ["喀斯特地貌", "丹霞地貌", "雅丹地貌"], c: 0 },
+        { q: "溶洞内“冬暖夏凉”是因为？", a: ["岩石会制冷", "受地表气温波动影响极小", "地下风力强"], c: 1 },
+        { q: "钟乳石的形成主要靠哪种物质沉淀？", a: ["硫酸钙", "碳酸钙", "二氧化硅"], c: 1 },
+        { q: "石笋和钟乳石连接在一起后称为？", a: ["石林", "石壁", "石柱"], c: 2 },
+        { q: "石笋是怎样生长的？", a: ["由洞顶向下长", "由地面向上长", "横向生长"], c: 1 },
+        { q: "形成奇幻溶洞的核心力量是？", a: ["风力侵蚀", "流水溶蚀与沉积", "火山喷发"], c: 1 },
+        { q: "溶洞中的水滴通常含有较多的？", a: ["二氧化碳", "氧气", "氢气"], c: 0 },
+        { q: "喀斯特地貌在我国哪类岩石分布区最典型？", a: ["花岗岩", "石灰岩", "玄武岩"], c: 1 },
+        { q: "钟乳石的生长速度通常是？", a: ["极慢（百年厘米计）", "极快（一年一米）", "肉眼可见"], c: 0 },
+        { q: "保护溶洞景观，我们应该？", a: ["敲一块带走", "不随意触摸触摸", "在岩壁刻字"], c: 1 }
+    ];
+
+    let score = 0;
+    let answeredCount = 0;
+
+    function initGame() {
+        const name = document.getElementById('nickname').value;
+        if(!name) { alert("请输入探险家代号！"); return; }
+        document.getElementById('start-screen').style.display = 'none';
+        document.getElementById('game-container').style.display = 'block';
+    }
+
+    function openQuiz(idx, el) {
+        const q = questions[idx];
+        document.getElementById('q-text').innerText = q.q;
+        const optDiv = document.getElementById('options');
+        optDiv.innerHTML = "";
+        
+        q.a.forEach((txt, i) => {
+            const b = document.createElement('button');
+            b.className = "opt-btn";
+            b.innerText = txt;
+            b.onclick = () => {
+                if(i === q.c) score++;
+                answeredCount++;
+                el.style.visibility = 'hidden'; // 点击后隐藏光斑
+                document.getElementById('quiz-box').style.display = 'none';
+                if(answeredCount === 10) showResult();
+            };
+            optDiv.appendChild(b);
+        });
+        document.getElementById('quiz-box').style.display = 'block';
+    }
+
+    function showResult() {
+        document.getElementById('game-container').style.display = 'none';
+        const resScreen = document.getElementById('result-screen');
+        const icon = document.getElementById('res-icon');
+        const title = document.getElementById('res-title');
+        const desc = document.getElementById('res-desc');
+        
+        let config = {};
+        if(score === 10) config = { t: "溶洞之神", i: "⚡", d: "你对地心奥秘了如指掌，你是大自然的代言人！" };
+        else if(score === 9) config = { t: "溶洞精灵", i: "✨", d: "敏锐的洞察力，你几乎与岩石产生了共鸣。" };
+        else if(score === 8) config = { t: "溶洞巫师", i: "🔮", d: "深谙化学沉积之术，地底世界在向你招手。" };
+        else if(score >= 5) config = { t: "溶洞土著", i: "🗿", d: "你对家园很熟悉，但科学原理还需更进一步哦。" };
+        else if(score >= 3) config = { t: "溶洞新手", i: "🧭", d: "带好你的手电筒，探险才刚刚开始。" };
+        else config = { t: "溶洞白痴", i: "🧊", d: "看来你是在洞穴里睡着了，再去学习一下吧！" };
+
+        icon.innerText = config.i;
+        title.innerText = config.t;
+        desc.innerText = config.d;
+        document.getElementById('res-score').innerText = `答对题数：${score} / 10`;
+        resScreen.style.display = 'flex';
+    }
+
+    function resetGame() {
+        score = 0;
+        answeredCount = 0;
+        // 重置所有光斑
+        const spots = document.querySelectorAll('.hotspot');
+        spots.forEach(s => s.style.visibility = 'visible');
+        // 回到登录界面
+        document.getElementById('result-screen').style.display = 'none';
+        document.getElementById('start-screen').style.display = 'flex';
+    }
+</script>
+</body>
+</html>
